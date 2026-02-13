@@ -1,0 +1,235 @@
+// Prisma schema — https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum TaskStatus {
+  todo
+  done
+  archived
+}
+
+enum ContextEnergy {
+  low
+  med
+  high
+}
+
+enum ContextUrgency {
+  low
+  med
+  high
+}
+
+enum ContextUniqueness {
+  familiar
+  related
+  novel
+}
+
+enum RecommendationMode {
+  default
+  quickWin
+  deepWork
+}
+
+enum RecommendationDecision {
+  recommended
+  accepted
+  skipped
+}
+
+enum RecommendationConfidence {
+  low
+  med
+  high
+}
+
+enum GeneratedSuggestionDecision {
+  pending
+  accepted
+  skipped
+}
+
+// ---------------------------------------------------------------------------
+// Auth models (NextAuth / Auth.js with Prisma adapter)
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String   @id @default(cuid())
+  name          String?
+  email         String?  @unique
+  emailVerified DateTime?
+  image         String?
+
+  accounts      Account[]
+  sessions      Session[]
+
+  // App relations
+  goals                 Goal[]
+  tasks                 Task[]
+  recommendationEvents  RecommendationEvent[]
+  llmBudgets            LLMBudget[]
+  generatedSuggestions  GeneratedSuggestion[]
+  userInterests         UserInterest[]
+
+  onboardingCompletedAt DateTime?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model UserInterest {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label     String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, label])
+  @@index([userId])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expires      DateTime
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ---------------------------------------------------------------------------
+// App models (from Tech Design)
+// ---------------------------------------------------------------------------
+
+model Goal {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  isActive    Boolean  @default(true)
+
+  tasks       Task[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, isActive])
+}
+
+model Task {
+  id               String       @id @default(cuid())
+  userId           String
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  goalId           String?
+  goal             Goal?        @relation(fields: [goalId], references: [id])
+  title            String
+  notes            String?
+  status           TaskStatus   @default(todo)
+  priority         Int?
+  urgency          Int?
+  estimatedMinutes Int?
+  estimatedInput   String?  // raw input e.g. "2h" for display hint
+  deadlineAt       DateTime?
+  lastTouchedAt    DateTime?
+
+  recommendationEvents RecommendationEvent[]
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([userId, status])
+  @@index([userId, deadlineAt])
+  @@index([userId, lastTouchedAt])
+}
+
+model RecommendationEvent {
+  id                 String                    @id @default(cuid())
+  userId             String
+  user               User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId             String
+  task               Task                      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  contextTimeMinutes Int
+  contextEnergy      ContextEnergy
+  contextUrgency     ContextUrgency
+  mode               RecommendationMode        @default(default)
+  decision           RecommendationDecision
+  confidence         RecommendationConfidence
+  explanation        String                    @db.Text
+  model              String
+  createdAt          DateTime                  @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model LLMBudget {
+  id     String   @id @default(cuid())
+  userId String
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  day    DateTime
+  count  Int      @default(0)
+
+  @@unique([userId, day])
+}
+
+model GeneratedSuggestion {
+  id                 String                        @id @default(cuid())
+  userId             String
+  user               User                          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contextTimeMinutes Int
+  contextEnergy      ContextEnergy
+  contextUrgency     ContextUrgency
+  contextUniqueness  ContextUniqueness? @default(related)
+  title              String
+  nextAction         String                        @db.VarChar(120)
+  estimatedMinutes   Int
+  tags               Json                          // string[]
+  reasoning          String                        @db.Text
+  confidence         String                        // low | med | high
+  model              String
+  sourceFeatures     Json                          // string[]
+  shortlistHash      String?
+  decision           GeneratedSuggestionDecision   @default(pending)
+  createdTaskId      String?
+  createdAt          DateTime                      @default(now())
+
+  @@index([userId, createdAt])
+}
+

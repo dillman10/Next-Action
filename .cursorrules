@@ -1,0 +1,24 @@
+# Cursor Rules for Next Action Decision Assistant
+
+## Project Context
+**App:** Next Action Decision Assistant  
+**Stack:** Next.js (App Router) + TypeScript + Tailwind + shadcn/ui; Next.js Route Handlers; PostgreSQL (Neon) + Prisma; Vercel; NextAuth/Auth.js + Resend; Anthropic Claude Sonnet  
+**Stage:** MVP Development  
+**User Level:** Developer (B)
+
+## Directives
+1. **Master Plan:** Always read `AGENTS.md` first.
+2. **Documentation:** Refer to `agent_docs/` for tech stack, patterns, and testing.
+3. **Plan-First:** Propose a brief plan and wait for approval before coding.
+4. **Incremental Build:** Implement one small feature at a time; keep diffs tight.
+5. **Verify:** Run checks after each feature (see `agent_docs/testing.md`).
+6. **No raw task logs:** Never log task titles/notes; redact.
+7. **Scope control:** Do not implement out-of-scope PRD items.
+8. **LLM bounds:** Never exceed ~4k input tokens / ~300 output tokens; enforce 10/day/user cap.
+
+## Commands
+- `npm run dev` — Start server
+- `npm run build` — Build
+- `npm run lint` — Lint (once configured)
+- `npx prisma migrate dev` — Migrate locally
+- `npx playwright test` — Run E2E
