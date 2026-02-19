@@ -65,6 +65,8 @@ export const authOptions: NextAuthOptions = {
         }
 
         const fromRaw = process.env.RESEND_FROM_EMAIL?.trim();
+        console.info("[auth] DEBUG: RESEND_FROM_EMAIL raw:", process.env.RESEND_FROM_EMAIL ? `"${process.env.RESEND_FROM_EMAIL}"` : "undefined");
+        console.info("[auth] DEBUG: RESEND_FROM_EMAIL trimmed:", fromRaw ? `"${fromRaw}"` : "empty/undefined");
         const from = fromRaw || "onboarding@resend.dev";
         if (!fromRaw) {
           console.warn("[auth] RESEND_FROM_EMAIL not set; using onboarding@resend.dev. Set RESEND_FROM_EMAIL in .env for production.");
@@ -82,10 +84,21 @@ export const authOptions: NextAuthOptions = {
           html: `<p>Sign in to Next Action: <a href="${url}">Click here to sign in</a>. Link expires soon.</p>`,
         });
 
-        console.info("[Resend] full response:", JSON.stringify({ data: result.data, error: result.error }));
+        const responsePayload = {
+          data: result.data,
+          error: result.error,
+          headers: (result as { headers?: Record<string, string> | null }).headers ?? null,
+        };
+        console.info("[Resend] full API response:", JSON.stringify(responsePayload));
 
         if (result.error) {
-          const err = result.error as { message?: string };
+          const err = result.error as { message?: string; statusCode?: number | null; name?: string };
+          console.error("[Resend] HTTP status code:", err?.statusCode ?? "unknown");
+          console.error("[Resend] structured error details:", JSON.stringify({
+            name: err?.name,
+            message: err?.message,
+            statusCode: err?.statusCode,
+          }));
           const msg = (err?.message ?? "").toLowerCase();
           if (msg.includes("not verified") || msg.includes("domain") || msg.includes("from")) {
             console.error(
@@ -94,7 +107,6 @@ export const authOptions: NextAuthOptions = {
           } else if (msg.includes("api") || msg.includes("key") || msg.includes("unauthorized") || msg.includes("invalid")) {
             console.error("[Resend] API key issue. Check RESEND_API_KEY is valid and has send permission.");
           }
-          console.error("[Resend] send failed — structured error:", JSON.stringify(result.error));
           throw new Error("We couldn't send the sign-in email. Please try again later.");
         }
         console.info("[Resend] send ok, id:", result.data?.id ?? "unknown");

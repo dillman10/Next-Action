@@ -47,10 +47,21 @@ async function main() {
     text: "If you received this, Resend is working.",
   });
 
-  console.info("[test-resend] full Resend response:", JSON.stringify({ data: result.data, error: result.error }));
+  const responsePayload = {
+    data: result.data,
+    error: result.error,
+    headers: result.headers ?? null,
+  };
+  console.info("[test-resend] full Resend API response:", JSON.stringify(responsePayload));
 
   if (result.error) {
-    console.error("[test-resend] send failed — structured error:", JSON.stringify(result.error));
+    const err = result.error;
+    console.error("[test-resend] HTTP status code:", err?.statusCode ?? "unknown");
+    console.error("[test-resend] structured error details:", JSON.stringify({
+      name: err?.name,
+      message: err?.message,
+      statusCode: err?.statusCode,
+    }));
     process.exit(1);
   }
   console.info("[test-resend] send ok, id:", result.data?.id ?? "unknown");
