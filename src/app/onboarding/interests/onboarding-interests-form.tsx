@@ -34,6 +34,15 @@ function normalizeKey(label: string): string {
   return label.trim().toLowerCase();
 }
 
+function dedupeByKey(labels: string[]): string[] {
+  const byLower = new Map<string, string>();
+  for (const label of labels) {
+    const key = normalizeKey(label);
+    if (!byLower.has(key)) byLower.set(key, label.trim());
+  }
+  return Array.from(byLower.values());
+}
+
 export function OnboardingInterestsForm({
   isEditing = false,
   initialInterests = [],
@@ -42,45 +51,83 @@ export function OnboardingInterestsForm({
   initialInterests?: string[];
 }) {
   const router = useRouter();
-  const [list, setList] = useState<string[]>(
-    initialInterests.map((l) => l.trim()).filter(Boolean),
+  const [yourInterests, setYourInterests] = useState<string[]>(() =>
+    dedupeByKey(initialInterests.map((l) => l.trim()).filter(Boolean)),
   );
   const [customInput, setCustomInput] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPersisting, setIsPersisting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const suggestedToShow = DEFAULT_INTERESTS.filter(
+    (label) =>
+      !yourInterests.some((y) => normalizeKey(y) === normalizeKey(label)),
+  );
+
+  const persistInterests = useCallback(async (list: string[]) => {
+    const payload = dedupeByKey(list);
+    setIsPersisting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/user/interests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ interests: payload }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to save");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setIsPersisting(false);
+    }
+  }, []);
+
+  const addFromSuggested = useCallback(
+    (label: string) => {
+      const key = normalizeKey(label);
+      if (yourInterests.some((y) => normalizeKey(y) === key)) return;
+      const next = dedupeByKey([...yourInterests, label]);
+      setYourInterests(next);
+      persistInterests(next);
+    },
+    [yourInterests, persistInterests],
+  );
+
+  const removeFromYours = useCallback(
+    (label: string) => {
+      const key = normalizeKey(label);
+      const next = yourInterests.filter((y) => normalizeKey(y) !== key);
+      setYourInterests(next);
+      persistInterests(next);
+    },
+    [yourInterests, persistInterests],
+  );
 
   const addFromInput = useCallback(() => {
     const trimmed = customInput.trim();
     if (!trimmed) return;
     const key = normalizeKey(trimmed);
-    setList((prev) => {
-      if (prev.some((l) => normalizeKey(l) === key)) return prev;
-      return [...prev, trimmed];
-    });
+    if (yourInterests.some((y) => normalizeKey(y) === key)) {
+      setCustomInput("");
+      return;
+    }
+    const next = dedupeByKey([...yourInterests, trimmed]);
+    setYourInterests(next);
     setCustomInput("");
-  }, [customInput]);
+    persistInterests(next);
+  }, [customInput, yourInterests, persistInterests]);
 
-  const removeLabel = useCallback((label: string) => {
-    const key = normalizeKey(label);
-    setList((prev) => prev.filter((l) => normalizeKey(l) !== key));
-  }, []);
-
-  const addSuggestion = useCallback((label: string) => {
-    const key = normalizeKey(label);
-    setList((prev) => {
-      if (prev.some((l) => normalizeKey(l) === key)) return prev;
-      return [...prev, label];
-    });
-  }, []);
-
-  const handleSave = async () => {
+  const handleContinue = async () => {
     setIsSubmitting(true);
     setError(null);
     try {
       const res = await fetch("/api/user/interests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ interests: list }),
+        body: JSON.stringify({ interests: dedupeByKey(yourInterests) }),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -117,25 +164,37 @@ export function OnboardingInterestsForm({
   return (
     <Card className="border-0 bg-transparent shadow-none">
       <CardContent className="p-0 space-y-6">
-        {/* Current interests as chips with x */}
-        <div className="flex flex-wrap gap-2">
-          {list.map((label) => (
-            <span
-              key={normalizeKey(label)}
-              className="inline-flex items-center gap-1.5 rounded-[var(--radius-lg)] bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
-            >
-              {label}
-              <button
-                type="button"
-                onClick={() => removeLabel(label)}
-                className="ml-0.5 rounded-[var(--radius-lg)] p-0.5 hover:bg-primary-foreground/20 focus:outline-none focus:ring-2 focus:ring-primary-foreground/40 cursor-pointer"
-                aria-label={`Remove ${label}`}
-              >
-                <span className="sr-only">Remove</span>
-                <span aria-hidden>×</span>
-              </button>
-            </span>
-          ))}
+        {/* Your Interests */}
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">
+            Your interests
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {yourInterests.length === 0 ? (
+              <span className="text-sm text-muted-foreground">
+                None yet — add from suggestions below or type your own.
+              </span>
+            ) : (
+              yourInterests.map((label) => (
+                <span
+                  key={normalizeKey(label)}
+                  className="inline-flex items-center gap-1.5 rounded-[var(--radius-lg)] bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+                >
+                  {label}
+                  <button
+                    type="button"
+                    onClick={() => removeFromYours(label)}
+                    disabled={isPersisting}
+                    className="ml-0.5 rounded-[var(--radius-lg)] p-0.5 hover:bg-primary-foreground/20 focus:outline-none focus:ring-2 focus:ring-primary-foreground/40 cursor-pointer disabled:opacity-50"
+                    aria-label={`Remove ${label}`}
+                  >
+                    <span className="sr-only">Remove</span>
+                    <span aria-hidden>×</span>
+                  </button>
+                </span>
+              ))
+            )}
+          </div>
         </div>
 
         {/* Add new interest */}
@@ -153,41 +212,41 @@ export function OnboardingInterestsForm({
             }}
             className="flex-1"
           />
-          <Button type="button" variant="outline" onClick={addFromInput}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={addFromInput}
+            disabled={isPersisting}
+          >
             Add
           </Button>
         </div>
 
-        {/* Suggestions (first-time only) */}
+        {/* Suggested Interests (first-time only) */}
         {!isEditing && (
           <div className="space-y-2">
             <p className="text-xs font-medium text-muted-foreground">
-              Or pick from suggestions
+              Suggested interests
             </p>
             <div className="flex flex-wrap gap-2">
-              {DEFAULT_INTERESTS.map((label) => {
-                const key = normalizeKey(label);
-                const alreadyAdded = list.some((l) => normalizeKey(l) === key);
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => addSuggestion(label)}
-                    disabled={alreadyAdded}
-                    className={`rounded-[var(--radius-lg)] px-4 py-2 text-sm font-medium transition-colors ${
-                      alreadyAdded
-                        ? "cursor-default bg-muted/50 text-muted-foreground"
-                        : "cursor-pointer bg-muted text-muted-foreground hover:bg-muted/80"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
+              {suggestedToShow.map((label) => (
+                <button
+                  key={normalizeKey(label)}
+                  type="button"
+                  onClick={() => addFromSuggested(label)}
+                  disabled={isPersisting}
+                  className="rounded-[var(--radius-lg)] px-4 py-2 text-sm font-medium transition-colors cursor-pointer bg-muted text-muted-foreground hover:bg-muted/80 disabled:opacity-50"
+                >
+                  {label}
+                </button>
+              ))}
             </div>
           </div>
         )}
 
+        {isPersisting && !error && (
+          <p className="text-sm text-muted-foreground">Saving…</p>
+        )}
         {error && (
           <p className="text-sm text-destructive">{error}</p>
         )}
@@ -203,14 +262,14 @@ export function OnboardingInterestsForm({
               variant="ghost"
               onClick={handleSkip}
               disabled={isSubmitting}
-            loading={isSubmitting}
+              loading={isSubmitting}
             >
               Skip for now
             </Button>
           )}
           <Button
             type="button"
-            onClick={handleSave}
+            onClick={handleContinue}
             disabled={isSubmitting}
             loading={isSubmitting}
           >

@@ -40,16 +40,16 @@ export default async function DashboardPage() {
             </a>
           </div>
         )}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-h1">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-1 min-w-0">
+            <h1 className="text-h1 font-semibold">
               Your next action
             </h1>
-            <p className="text-body text-muted-foreground">
+            <p className="text-body text-muted-foreground text-sm font-normal sm:text-base">
               Set your context and get a recommendation for what to work on next.
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 shrink-0">
             <Button asChild variant="outline" size="sm">
               <a href="/dashboard/goals">Goals</a>
             </Button>
